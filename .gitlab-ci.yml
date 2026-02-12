@@ -1,0 +1,46 @@
+# This pipeline runs three things:
+# 1) Unit tests with Jest
+# 2) JSHint scan (code style + common JS issues)
+# 3) Secret Detection scan (looks for leaked credentials/secrets)
+
+stages:
+  - test
+  - scan
+
+# Use a Node image so npm/jest runs consistently in GitLab runners
+image: node:20
+
+# Cache speeds up future pipeline runs by reusing node_modules downloads
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - node_modules/
+
+# Run before each job: install dependencies
+before_script:
+  # npm ci is best for CI because it installs exactly what package-lock.json specifies
+  - npm ci || npm install
+
+unit_tests:
+  stage: test
+  script:
+    # Runs Jest tests (package.json scripts.test)
+    - npm test
+
+jshint_scan:
+  stage: scan
+  script:
+    # Install jshint for this job (dev dependency could also be added to package.json)
+    - npm install --save-dev jshint
+    # Run JSHint on our JS file and output results to a report
+    - npx jshint validatePalindrome.js > jshint-report.txt || true
+    # "|| true" prevents pipeline failure if lint warnings exist; still produces the report
+  artifacts:
+    when: always
+    paths:
+      - jshint-report.txt
+
+# GitLab provides a built-in template for secret detection
+# This job scans the repo for exposed secrets like tokens/keys/passwords
+include:
+  - template: Security/Secret-Detection.gitlab-ci.yml
